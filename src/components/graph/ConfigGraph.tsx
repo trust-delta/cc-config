@@ -64,9 +64,7 @@ export function ConfigGraph({ scanResult, onFileSelect }: ConfigGraphProps) {
         proOptions={{ hideAttribution: true }}
       >
         <Background color="#334155" gap={20} />
-        <Controls
-          className="!bg-slate-800 !border-slate-600 !rounded-lg [&>button]:!bg-slate-700 [&>button]:!border-slate-600 [&>button]:!text-slate-300"
-        />
+        <Controls className="!bg-slate-800 !border-slate-600 !rounded-lg [&>button]:!bg-slate-700 [&>button]:!border-slate-600 [&>button]:!text-slate-300" />
         <MiniMap
           className="!bg-slate-900 !border-slate-700"
           nodeColor={(n) => {

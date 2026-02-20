@@ -1,6 +1,6 @@
 import { readDir, exists, readTextFile } from "@tauri-apps/plugin-fs";
 import { homeDir } from "@tauri-apps/api/path";
-import type { ConfigCategory, ConfigScope, DetectedFile } from "../types/config";
+import type { ConfigCategory, ConfigScope, DetectedFile, DirEntry } from "../types/config";
 
 /** ディレクトリが存在するかチェック */
 async function dirExists(path: string): Promise<boolean> {
@@ -22,7 +22,7 @@ async function detectFile(
     const fileExists = await exists(path);
     if (!fileExists) return null;
     const name = path.split("/").pop() ?? path;
-    return { path, name, scope, category, isLocalOverride };
+    return { path, name, scope, category, isLocalOverride, isDirectory: false };
   } catch {
     return null;
   }
@@ -48,6 +48,7 @@ async function detectFilesInDir(
         scope,
         category,
         isLocalOverride: false,
+        isDirectory: entry.isDirectory ?? false,
       });
     }
   } catch {
@@ -57,10 +58,7 @@ async function detectFilesInDir(
 }
 
 /** Skills ディレクトリをスキャン（サブディレクトリ内の SKILL.md を探す） */
-async function detectSkills(
-  basePath: string,
-  scope: ConfigScope,
-): Promise<DetectedFile[]> {
+async function detectSkills(basePath: string, scope: ConfigScope): Promise<DetectedFile[]> {
   const results: DetectedFile[] = [];
   try {
     if (!(await dirExists(basePath))) return results;
@@ -83,7 +81,7 @@ async function detectSkills(
 /** グローバル設定（~/.claude/）をスキャン */
 export async function scanGlobalConfig(): Promise<DetectedFile[]> {
   const home = await homeDir();
-  const claudeDir = `${home}.claude`;
+  const claudeDir = `${home}/.claude`;
   const files: DetectedFile[] = [];
 
   // CLAUDE.md
@@ -169,5 +167,31 @@ export async function readFileContent(path: string): Promise<string | null> {
     return await readTextFile(path);
   } catch {
     return null;
+  }
+}
+
+/** ディレクトリの内容を再帰的に読み込む（最大2階層） */
+export async function readDirTree(dirPath: string, depth = 0): Promise<DirEntry[]> {
+  const maxDepth = 2;
+  try {
+    const entries = await readDir(dirPath);
+    const result: DirEntry[] = [];
+    for (const entry of entries) {
+      const fullPath = `${dirPath}/${entry.name}`;
+      const isDir = entry.isDirectory ?? false;
+      const node: DirEntry = { name: entry.name, path: fullPath, isDirectory: isDir };
+      if (isDir && depth < maxDepth) {
+        node.children = await readDirTree(fullPath, depth + 1);
+      }
+      result.push(node);
+    }
+    // ディレクトリ優先、名前順
+    result.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    return result;
+  } catch {
+    return [];
   }
 }

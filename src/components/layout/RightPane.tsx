@@ -8,7 +8,7 @@ interface RightPaneProps {
 /** ファイルプレビューパネル（右ペイン） */
 export function RightPane({ selectedFile }: RightPaneProps) {
   return (
-    <div className="h-full bg-slate-900 border-l border-slate-700">
+    <div className="h-full bg-slate-900 border-l border-slate-700 overflow-hidden">
       <FilePreview file={selectedFile} />
     </div>
   );

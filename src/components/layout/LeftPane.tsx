@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 /** localStorage のキー */
@@ -29,11 +29,7 @@ interface LeftPaneProps {
 
 /** プロジェクト選択サイドバー */
 export function LeftPane({ selectedProject, onSelectProject }: LeftPaneProps) {
-  const [projects, setProjects] = useState<string[]>([]);
-
-  useEffect(() => {
-    setProjects(loadProjects());
-  }, []);
+  const [projects, setProjects] = useState<string[]>(loadProjects);
 
   /** ディレクトリ選択ダイアログを開く */
   const handleAddProject = useCallback(async () => {
@@ -68,12 +64,10 @@ export function LeftPane({ selectedProject, onSelectProject }: LeftPaneProps) {
   const displayName = (path: string) => path.split("/").pop() ?? path;
 
   return (
-    <div className="h-full flex flex-col bg-slate-900 border-r border-slate-700">
+    <div className="h-full flex flex-col bg-slate-900 border-r border-slate-700 overflow-hidden">
       {/* ヘッダー */}
       <div className="px-3 py-3 border-b border-slate-700">
-        <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-          Projects
-        </h2>
+        <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Projects</h2>
       </div>
 
       {/* Global（常に表示） */}
@@ -91,7 +85,7 @@ export function LeftPane({ selectedProject, onSelectProject }: LeftPaneProps) {
       </div>
 
       {/* プロジェクト一覧 */}
-      <div className="flex-1 overflow-y-auto px-2 py-1">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-2 py-1">
         {projects.map((path) => (
           <div key={path} className="group flex items-center gap-1 mb-0.5">
             <button

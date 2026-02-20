@@ -35,13 +35,14 @@ function resolveHookReferences(
 ): FileReference[] {
   const references: FileReference[] = [];
 
-  if (settings.hooks) {
+  if (settings.hooks && typeof settings.hooks === "object") {
     for (const [, hookEntries] of Object.entries(settings.hooks)) {
+      if (!Array.isArray(hookEntries)) continue;
       for (const entry of hookEntries) {
         if (entry.type === "command" && entry.command) {
           // コマンド内のファイルパスを検出（スクリプトファイルが allFiles にあるか）
-          const targetFile = allFiles.find((f) =>
-            entry.command.includes(f.name) || entry.command.includes(f.path),
+          const targetFile = allFiles.find(
+            (f) => entry.command.includes(f.name) || entry.command.includes(f.path),
           );
           if (targetFile) {
             references.push({
@@ -67,11 +68,9 @@ function resolvePluginReferences(
 ): FileReference[] {
   const references: FileReference[] = [];
 
-  if (settings.enabledPlugins) {
+  if (Array.isArray(settings.enabledPlugins)) {
     for (const pluginName of settings.enabledPlugins) {
-      const targetFile = allFiles.find(
-        (f) => f.category === "plugins" && f.name === pluginName,
-      );
+      const targetFile = allFiles.find((f) => f.category === "plugins" && f.name === pluginName);
       if (targetFile) {
         references.push({
           sourceFile: settingsFile.path,
@@ -94,9 +93,9 @@ function resolveStatusLineReferences(
 ): FileReference[] {
   const references: FileReference[] = [];
 
-  if (settings.statusLine) {
-    const targetFile = allFiles.find((f) =>
-      settings.statusLine!.includes(f.name) || settings.statusLine!.includes(f.path),
+  if (typeof settings.statusLine === "string" && settings.statusLine) {
+    const targetFile = allFiles.find(
+      (f) => settings.statusLine!.includes(f.name) || settings.statusLine!.includes(f.path),
     );
     if (targetFile) {
       references.push({
@@ -112,9 +111,7 @@ function resolveStatusLineReferences(
 }
 
 /** 全ファイルの参照を解決する */
-export async function resolveAllReferences(
-  files: DetectedFile[],
-): Promise<FileReference[]> {
+export async function resolveAllReferences(files: DetectedFile[]): Promise<FileReference[]> {
   const allReferences: FileReference[] = [];
 
   for (const file of files) {

@@ -4,12 +4,13 @@ import { Handle, Position } from "@xyflow/react";
 import type { FileNode as FileNodeType } from "../../../types/graph";
 import { SCOPE_COLORS, LOCAL_OVERRIDE_BORDER } from "../../../constants/styles";
 
-/** ファイルアイコンを返す（カテゴリに応じて変更） */
-function getFileIcon(name: string): string {
+/** ファイルアイコンを返す */
+function getFileIcon(name: string, isDirectory: boolean): string {
+  if (isDirectory) return "📁";
   if (name.endsWith(".md")) return "📄";
   if (name.endsWith(".json")) return "⚙️";
   if (name.endsWith(".sh") || name.endsWith(".bash")) return "🔧";
-  return "📁";
+  return "📄";
 }
 
 /** ファイルノード */
@@ -29,7 +30,7 @@ function FileNodeComponent({ data }: NodeProps<FileNodeType>) {
       title={data.file.path}
     >
       <Handle type="target" position={Position.Left} className="!w-1.5 !h-1.5 !bg-slate-400" />
-      <span className="mr-1">{getFileIcon(data.file.name)}</span>
+      <span className="mr-1">{getFileIcon(data.file.name, data.file.isDirectory)}</span>
       <span>{data.file.name}</span>
       <Handle type="source" position={Position.Right} className="!w-1.5 !h-1.5 !bg-slate-400" />
     </div>

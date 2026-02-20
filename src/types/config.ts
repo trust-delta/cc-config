@@ -53,6 +53,16 @@ export interface DetectedFile {
   content?: string;
   /** local override かどうか（settings.local.json 等） */
   isLocalOverride: boolean;
+  /** ディレクトリかどうか */
+  isDirectory: boolean;
+}
+
+/** ディレクトリツリーのエントリ */
+export interface DirEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  children?: DirEntry[];
 }
 
 /** hook設定の型 */
