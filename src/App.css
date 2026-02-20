@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+@theme {
+  /* スコープ別色定義 */
+  --color-global-bg: #1e3a5f;
+  --color-global-border: #3b82f6;
+  --color-project-bg: #1a3d2e;
+  --color-project-border: #22c55e;
+  --color-local-border: #f97316;
+  --color-surface: #1a1a2e;
+  --color-surface-light: #232340;
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #94a3b8;
+}
