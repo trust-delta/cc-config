@@ -43,8 +43,8 @@ export function OverrideIndicator({ overrides, currentScope }: OverrideIndicator
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <span className="text-[10px] text-amber-400 cursor-help ml-1">
-        ⚡{otherOverrides[0].scope[0].toUpperCase()}:{truncateValue(otherOverrides[0].value, 10)}
+      <span className="inline-flex items-center text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded font-bold leading-none border border-amber-400/30 cursor-help ml-1">
+        OVERRIDE
       </span>
 
       {isHovered && (

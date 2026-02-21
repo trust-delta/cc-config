@@ -149,6 +149,56 @@ describe("buildEffectiveConfig", () => {
       expect(result.settings).toEqual([]);
     });
 
+    it("hooks を含む settings が additive マージされる", () => {
+      const globalSettings = makeFile({
+        path: "/home/.claude/settings.json",
+        name: "settings.json",
+        scope: "global",
+        category: "settings",
+      });
+      const projectSettings = makeFile({
+        path: "/project/.claude/settings.json",
+        name: "settings.json",
+        scope: "project",
+        category: "settings",
+      });
+      const scanResult: ScanResult = {
+        files: [globalSettings, projectSettings],
+        references: [],
+      };
+      const contents = new Map([
+        [
+          "/home/.claude/settings.json",
+          JSON.stringify({
+            hooks: {
+              PreToolUse: [{ matcher: "Bash", hooks: ["echo global"] }],
+            },
+          }),
+        ],
+        [
+          "/project/.claude/settings.json",
+          JSON.stringify({
+            hooks: {
+              PreToolUse: [{ matcher: "Edit", hooks: ["echo project"] }],
+            },
+          }),
+        ],
+      ]);
+      const result = buildEffectiveConfig(scanResult, contents);
+
+      const hooksNode = result.settings.find((n) => n.key === "hooks");
+      expect(hooksNode).toBeDefined();
+      expect(hooksNode!.isLeaf).toBe(false);
+
+      const preToolUseNode = hooksNode!.children!.find((n) => n.key === "PreToolUse");
+      expect(preToolUseNode).toBeDefined();
+      expect(preToolUseNode!.mergeStrategy).toBe("additive");
+      expect(preToolUseNode!.effectiveValue).toEqual([
+        { matcher: "Bash", hooks: ["echo global"] },
+        { matcher: "Edit", hooks: ["echo project"] },
+      ]);
+    });
+
     it("content が存在しない settings ファイルは無視される", () => {
       const scanResult: ScanResult = {
         files: [

@@ -89,7 +89,9 @@ function buildSettings(
     }
   }
 
-  return mergeSettings(layers);
+  // hooks は累積型マージ（全スコープの hooks が並列実行される）
+  const additiveKeys = new Set(["hooks"]);
+  return mergeSettings(layers, additiveKeys);
 }
 
 /** Extensions セクションを構築する */

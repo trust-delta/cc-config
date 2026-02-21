@@ -35,6 +35,8 @@ function SettingNodeComponent({ node, depth, onFileClick }: SettingNodeProps) {
   const indentPx = depth * 16;
 
   if (node.isLeaf) {
+    const isAdditive = node.mergeStrategy === "additive";
+
     return (
       <div
         className="flex items-center gap-1.5 py-0.5 min-h-[24px]"
@@ -44,16 +46,45 @@ function SettingNodeComponent({ node, depth, onFileClick }: SettingNodeProps) {
         <span className="text-slate-200 text-xs font-mono truncate">
           {formatValue(node.effectiveValue)}
         </span>
-        <button
-          type="button"
-          className="shrink-0 cursor-pointer"
-          onClick={handleBadgeClick}
-          title={node.sourceFile}
-        >
-          <ScopeBadge scope={node.source} />
-        </button>
-        {node.overrides && (
-          <OverrideIndicator overrides={node.overrides} currentScope={node.source} />
+        {isAdditive ? (
+          <>
+            <span className="inline-flex items-center text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded font-bold leading-none border border-emerald-400/30 shrink-0">
+              MERGED
+            </span>
+            {node.overrides?.map((override) => (
+              <button
+                key={`${override.scope}-${override.sourceFile}`}
+                type="button"
+                className="shrink-0 cursor-pointer"
+                onClick={() => onFileClick(override.sourceFile)}
+                title={override.sourceFile}
+              >
+                <ScopeBadge scope={override.scope} />
+              </button>
+            ))}
+            <button
+              type="button"
+              className="shrink-0 cursor-pointer"
+              onClick={handleBadgeClick}
+              title={node.sourceFile}
+            >
+              <ScopeBadge scope={node.source} />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="shrink-0 cursor-pointer"
+              onClick={handleBadgeClick}
+              title={node.sourceFile}
+            >
+              <ScopeBadge scope={node.source} />
+            </button>
+            {node.overrides && (
+              <OverrideIndicator overrides={node.overrides} currentScope={node.source} />
+            )}
+          </>
         )}
       </div>
     );

@@ -7,11 +7,11 @@ interface ScopeBadgeProps {
   className?: string;
 }
 
-/** スコープの省略ラベルを返す */
+/** スコープのラベルを返す */
 const SCOPE_LABELS: Record<EffectiveScope, string> = {
-  global: "G",
-  project: "P",
-  local: "L",
+  global: "USER",
+  project: "PROJECT",
+  local: "LOCAL",
 };
 
 /** スコープを色付きバッジで表示するコンポーネント */

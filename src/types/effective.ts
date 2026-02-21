@@ -15,6 +15,8 @@ export interface MergedSettingNode {
   source: EffectiveScope;
   /** ソースファイルパス */
   sourceFile: string;
+  /** マージ戦略（"additive" = 累積型、未指定 = "replace"） */
+  mergeStrategy?: "replace" | "additive";
   /** 上書き情報（低優先→高優先の順） */
   overrides?: SettingOverride[];
   /** 子ノード（オブジェクト型の場合） */

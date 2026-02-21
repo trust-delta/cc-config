@@ -35,6 +35,8 @@ interface MergedEntry {
   sourceFile: string;
   /** 上書き履歴（低優先→高優先の順） */
   overrides: SettingOverride[];
+  /** 累積型マージが適用されたか */
+  isAdditive: boolean;
 }
 
 /** フラットなマージ結果から MergedSettingNode ツリーを構築する */
@@ -86,6 +88,9 @@ function buildNodeTree(merged: Map<string, MergedEntry>, parentPath: string): Me
         sourceFile: entry.sourceFile,
         isLeaf: true,
       };
+      if (entry.isAdditive) {
+        node.mergeStrategy = "additive";
+      }
       if (entry.overrides.length > 0) {
         node.overrides = entry.overrides;
       }
@@ -124,9 +129,39 @@ function flattenObject(obj: Record<string, unknown>, prefix: string): Array<[str
   return result;
 }
 
+/** パスが additiveKeys の子配列パスかどうかを判定する */
+function isAdditiveArrayPath(path: string, additiveKeys: Set<string>): boolean {
+  for (const key of additiveKeys) {
+    // パスが "hooks.XXX" の形式（= additiveKey の直接の子）であるかを判定
+    const prefix = `${key}.`;
+    if (path.startsWith(prefix) && !path.slice(prefix.length).includes(".")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 配列を重複排除して結合する */
+function deduplicateArrayConcat(existing: unknown[], incoming: unknown[]): unknown[] {
+  const result = [...existing];
+  for (const item of incoming) {
+    const serialized = JSON.stringify(item);
+    const isDuplicate = result.some((r) => JSON.stringify(r) === serialized);
+    if (!isDuplicate) {
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 /** 複数レイヤーをマージして MergedSettingNode[] を返す */
-export function mergeSettings(layers: SettingsLayer[]): MergedSettingNode[] {
+export function mergeSettings(
+  layers: SettingsLayer[],
+  additiveKeys?: Set<string>,
+): MergedSettingNode[] {
   if (layers.length === 0) return [];
+
+  const effectiveAdditiveKeys = additiveKeys ?? new Set<string>();
 
   // 全レイヤーをフラット化してマージする（低優先→高優先の順に処理）
   const merged = new Map<string, MergedEntry>();
@@ -138,16 +173,31 @@ export function mergeSettings(layers: SettingsLayer[]): MergedSettingNode[] {
       const existing = merged.get(path);
 
       if (existing) {
-        // 既に同じキーが存在 → 上書き
-        // 既存の値を overrides に追加
-        existing.overrides.push({
-          scope: existing.scope,
-          sourceFile: existing.sourceFile,
-          value: existing.value,
-        });
-        existing.value = value;
-        existing.scope = layer.scope;
-        existing.sourceFile = layer.sourceFile;
+        const isAdditive =
+          Array.isArray(value) &&
+          Array.isArray(existing.value) &&
+          isAdditiveArrayPath(path, effectiveAdditiveKeys);
+
+        if (isAdditive) {
+          // 累積型マージ: 配列を結合し、重複排除する
+          existing.overrides.push({
+            scope: layer.scope,
+            sourceFile: layer.sourceFile,
+            value,
+          });
+          existing.value = deduplicateArrayConcat(existing.value as unknown[], value as unknown[]);
+          existing.isAdditive = true;
+        } else {
+          // 通常の置換マージ
+          existing.overrides.push({
+            scope: existing.scope,
+            sourceFile: existing.sourceFile,
+            value: existing.value,
+          });
+          existing.value = value;
+          existing.scope = layer.scope;
+          existing.sourceFile = layer.sourceFile;
+        }
       } else {
         // 新規キー
         merged.set(path, {
@@ -155,6 +205,7 @@ export function mergeSettings(layers: SettingsLayer[]): MergedSettingNode[] {
           scope: layer.scope,
           sourceFile: layer.sourceFile,
           overrides: [],
+          isAdditive: false,
         });
       }
     }

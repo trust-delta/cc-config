@@ -175,6 +175,122 @@ describe("mergeSettings", () => {
     expect(verboseNode!.source).toBe("local");
   });
 
+  describe("additiveKeys による累積マージ", () => {
+    it("hooks の配列が累積マージされる", () => {
+      const globalLayer: SettingsLayer = {
+        scope: "global",
+        sourceFile: "/home/.claude/settings.json",
+        data: {
+          hooks: {
+            PreToolUse: [{ matcher: "Bash", hooks: ["echo global"] }],
+          },
+        },
+      };
+      const projectLayer: SettingsLayer = {
+        scope: "project",
+        sourceFile: "/project/.claude/settings.json",
+        data: {
+          hooks: {
+            PreToolUse: [{ matcher: "Edit", hooks: ["echo project"] }],
+          },
+        },
+      };
+      const result = mergeSettings([globalLayer, projectLayer], new Set(["hooks"]));
+
+      const hooksNode = result.find((n) => n.key === "hooks");
+      expect(hooksNode).toBeDefined();
+      expect(hooksNode!.isLeaf).toBe(false);
+
+      const preToolUseNode = hooksNode!.children!.find((n) => n.key === "PreToolUse");
+      expect(preToolUseNode).toBeDefined();
+      expect(preToolUseNode!.mergeStrategy).toBe("additive");
+      expect(preToolUseNode!.effectiveValue).toEqual([
+        { matcher: "Bash", hooks: ["echo global"] },
+        { matcher: "Edit", hooks: ["echo project"] },
+      ]);
+      // overrides に各ソースの個別配列が記録される
+      expect(preToolUseNode!.overrides).toHaveLength(1);
+      expect(preToolUseNode!.overrides![0].scope).toBe("project");
+      expect(preToolUseNode!.overrides![0].value).toEqual([
+        { matcher: "Edit", hooks: ["echo project"] },
+      ]);
+    });
+
+    it("同一エントリが重複排除される", () => {
+      const globalLayer: SettingsLayer = {
+        scope: "global",
+        sourceFile: "/home/.claude/settings.json",
+        data: {
+          hooks: {
+            PreToolUse: [
+              { matcher: "Bash", hooks: ["echo shared"] },
+              { matcher: "Edit", hooks: ["echo global-only"] },
+            ],
+          },
+        },
+      };
+      const projectLayer: SettingsLayer = {
+        scope: "project",
+        sourceFile: "/project/.claude/settings.json",
+        data: {
+          hooks: {
+            PreToolUse: [
+              { matcher: "Bash", hooks: ["echo shared"] },
+              { matcher: "Write", hooks: ["echo project-only"] },
+            ],
+          },
+        },
+      };
+      const result = mergeSettings([globalLayer, projectLayer], new Set(["hooks"]));
+
+      const hooksNode = result.find((n) => n.key === "hooks");
+      const preToolUseNode = hooksNode!.children!.find((n) => n.key === "PreToolUse");
+      expect(preToolUseNode!.effectiveValue).toEqual([
+        { matcher: "Bash", hooks: ["echo shared"] },
+        { matcher: "Edit", hooks: ["echo global-only"] },
+        { matcher: "Write", hooks: ["echo project-only"] },
+      ]);
+    });
+
+    it("additiveKeys に指定されていないキーは従来通り全置換される", () => {
+      const globalLayer: SettingsLayer = {
+        scope: "global",
+        sourceFile: "/home/.claude/settings.json",
+        data: {
+          enabledPlugins: ["pluginA", "pluginB"],
+          hooks: {
+            PreToolUse: [{ matcher: "Bash", hooks: ["echo g"] }],
+          },
+        },
+      };
+      const projectLayer: SettingsLayer = {
+        scope: "project",
+        sourceFile: "/project/.claude/settings.json",
+        data: {
+          enabledPlugins: ["pluginC"],
+          hooks: {
+            PreToolUse: [{ matcher: "Edit", hooks: ["echo p"] }],
+          },
+        },
+      };
+      const result = mergeSettings([globalLayer, projectLayer], new Set(["hooks"]));
+
+      // enabledPlugins は全置換
+      const pluginsNode = result.find((n) => n.key === "enabledPlugins");
+      expect(pluginsNode!.effectiveValue).toEqual(["pluginC"]);
+      expect(pluginsNode!.mergeStrategy).toBeUndefined();
+
+      // hooks.PreToolUse は累積
+      const hooksNode = result.find((n) => n.key === "hooks");
+      const preToolUseNode = hooksNode!.children!.find((n) => n.key === "PreToolUse");
+      expect(preToolUseNode!.mergeStrategy).toBe("additive");
+      expect(preToolUseNode!.effectiveValue).toEqual([
+        { matcher: "Bash", hooks: ["echo g"] },
+        { matcher: "Edit", hooks: ["echo p"] },
+      ]);
+    });
+  });
+
   it("3レイヤー以上で overrides に全ソースが含まれる", () => {
     const layers: SettingsLayer[] = [
       {
