@@ -1,4 +1,5 @@
-import type { ConfigScope, ReferenceType } from "../types/config";
+import type { ConfigScope } from "../types/config";
+import type { EffectiveScope } from "../types/effective";
 
 /** スコープ別の色設定 */
 export interface ScopeColors {
@@ -27,18 +28,12 @@ export const SCOPE_COLORS: Record<ConfigScope, ScopeColors> = {
 /** Local override のボーダー色 */
 export const LOCAL_OVERRIDE_BORDER = "#f97316";
 
-/** エッジ種別ごとの色 */
-export const EDGE_COLORS: Record<ReferenceType, string> = {
-  "at-import": "#a78bfa",
-  "hook-script": "#f59e0b",
-  plugin: "#ec4899",
-  statusline: "#06b6d4",
-};
-
-/** エッジ種別ごとのラベル */
-export const EDGE_LABELS: Record<ReferenceType, string> = {
-  "at-import": "@import",
-  "hook-script": "hook",
-  plugin: "plugin",
-  statusline: "statusLine",
+/** 有効設定スコープ別の色マップ */
+export const EFFECTIVE_SCOPE_COLORS: Record<
+  EffectiveScope,
+  { bg: string; text: string; border: string }
+> = {
+  global: { bg: "#1e3a5f", text: "#93c5fd", border: "#3b82f6" },
+  project: { bg: "#1a3d2e", text: "#86efac", border: "#22c55e" },
+  local: { bg: "#3d2e1a", text: "#fdba74", border: "#f97316" },
 };

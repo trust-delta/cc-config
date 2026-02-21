@@ -1,12 +1,14 @@
 import { useState, useCallback, useEffect } from "react";
 import type { ScanResult, DetectedFile } from "../types/config";
-import { scanGlobalConfig, scanProjectConfig } from "../lib/scanner";
+import { scanGlobalConfig, scanProjectConfig, readFileContent } from "../lib/scanner";
 import { resolveAllReferences } from "../lib/reference-resolver";
 
 /** スキャン状態 */
 interface ConfigScanState {
   /** スキャン結果 */
   result: ScanResult;
+  /** settings.json ファイルの内容マップ（path → content） */
+  settingsContents: Map<string, string>;
   /** ローディング中か */
   loading: boolean;
   /** エラーメッセージ */
@@ -15,10 +17,24 @@ interface ConfigScanState {
   projectPath: string | null;
 }
 
+/** settings ファイルの内容を読み込む */
+async function loadSettingsContents(files: DetectedFile[]): Promise<Map<string, string>> {
+  const settingsFiles = files.filter((f) => f.category === "settings" && f.name.endsWith(".json"));
+  const contents = new Map<string, string>();
+  for (const file of settingsFiles) {
+    const content = await readFileContent(file.path);
+    if (content) {
+      contents.set(file.path, content);
+    }
+  }
+  return contents;
+}
+
 /** 設定ファイルのスキャン結果を管理するhook */
 export function useConfigScan() {
   const [state, setState] = useState<ConfigScanState>({
     result: { files: [], references: [] },
+    settingsContents: new Map(),
     loading: true,
     error: null,
     projectPath: null,
@@ -35,8 +51,10 @@ export function useConfigScan() {
       }
       const allFiles = [...globalFiles, ...projectFiles];
       const references = await resolveAllReferences(allFiles);
+      const settingsContents = await loadSettingsContents(allFiles);
       setState({
         result: { files: allFiles, references },
+        settingsContents,
         loading: false,
         error: null,
         projectPath,

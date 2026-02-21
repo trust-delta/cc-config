@@ -3,11 +3,11 @@ import type { DetectedFile } from "../../types/config";
 import { useConfigScan } from "../../hooks/use-config-scan";
 import { LeftPane } from "./LeftPane";
 import { RightPane } from "./RightPane";
-import { ConfigGraph } from "../graph/ConfigGraph";
+import { EffectiveView } from "../effective/EffectiveView";
 
 /** 3ペインレイアウト */
 export function AppLayout() {
-  const { result, loading, error, projectPath, setProjectPath } = useConfigScan();
+  const { result, settingsContents, loading, error, projectPath, setProjectPath } = useConfigScan();
   const [selectedFile, setSelectedFile] = useState<DetectedFile | null>(null);
 
   const handleFileSelect = useCallback((file: DetectedFile) => {
@@ -19,8 +19,8 @@ export function AppLayout() {
       {/* 左ペイン: プロジェクト選択 */}
       <LeftPane selectedProject={projectPath} onSelectProject={setProjectPath} />
 
-      {/* 中央ペイン: ノードグラフ */}
-      <div className="relative">
+      {/* 中央ペイン: 有効設定ビュー */}
+      <div className="relative overflow-hidden">
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-slate-500 text-sm">Scanning...</div>
@@ -34,7 +34,11 @@ export function AppLayout() {
             <div className="text-slate-500 text-sm">設定ファイルが見つかりませんでした</div>
           </div>
         ) : (
-          <ConfigGraph scanResult={result} onFileSelect={handleFileSelect} />
+          <EffectiveView
+            scanResult={result}
+            settingsContents={settingsContents}
+            onFileSelect={handleFileSelect}
+          />
         )}
       </div>
 
