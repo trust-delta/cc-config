@@ -36,4 +36,5 @@ export const EFFECTIVE_SCOPE_COLORS: Record<
   global: { bg: "#1e3a5f", text: "#93c5fd", border: "#3b82f6" },
   project: { bg: "#1a3d2e", text: "#86efac", border: "#22c55e" },
   local: { bg: "#3d2e1a", text: "#fdba74", border: "#f97316" },
+  subdirectory: { bg: "#3d1a3d", text: "#e9b5f7", border: "#a855f7" },
 };

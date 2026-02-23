@@ -1,7 +1,7 @@
 import type { DetectedFile } from "./config";
 
 /** 有効設定のスコープ */
-export type EffectiveScope = "global" | "project" | "local";
+export type EffectiveScope = "global" | "project" | "local" | "subdirectory";
 
 /** マージ済み設定のツリーノード */
 export interface MergedSettingNode {
@@ -45,6 +45,20 @@ export interface InstructionEntry {
   type: "claude-md" | "rule";
 }
 
+/** Instruction Stack のエントリ（注入順序付き） */
+export interface InstructionStackEntry {
+  /** 検出されたファイル */
+  file: DetectedFile;
+  /** スコープ */
+  scope: EffectiveScope;
+  /** 種別 */
+  type: "claude-md" | "rule";
+  /** 注入順序（1=最初=最低優先, N=最後=最高優先） */
+  injectionOrder: number;
+  /** ファイルが属するディレクトリパス */
+  ownerDir: string;
+}
+
 /** Extensions セクションのエントリ */
 export interface ExtensionEntry {
   /** 検出されたファイル */
@@ -61,4 +75,6 @@ export interface EffectiveConfig {
   settings: MergedSettingNode[];
   /** Extensions セクション（skills, agents等） */
   extensions: ExtensionEntry[];
+  /** Instruction Stack（選択ディレクトリに応じた注入順スタック） */
+  instructionStack?: InstructionStackEntry[];
 }

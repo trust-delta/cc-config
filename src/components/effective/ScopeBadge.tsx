@@ -12,6 +12,7 @@ const SCOPE_LABELS: Record<EffectiveScope, string> = {
   global: "USER",
   project: "PROJECT",
   local: "LOCAL",
+  subdirectory: "SUBDIR",
 };
 
 /** スコープを色付きバッジで表示するコンポーネント */

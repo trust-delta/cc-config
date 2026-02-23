@@ -78,6 +78,18 @@ export interface SettingsJson {
   statusLine?: string;
 }
 
+/** プロジェクトディレクトリツリーのノード */
+export interface ProjectTreeNode {
+  /** ディレクトリ名 */
+  name: string;
+  /** ディレクトリの絶対パス */
+  path: string;
+  /** CLAUDE.md/.claude/rules/*.md が存在するか */
+  hasInstructions: boolean;
+  /** 子ディレクトリ */
+  children: ProjectTreeNode[];
+}
+
 /** スキャン結果 */
 export interface ScanResult {
   /** 検出されたファイル一覧 */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ScanResult, DetectedFile } from "../types/config";
-import { buildEffectiveConfig } from "./effective-builder";
+import { buildEffectiveConfig, buildInstructionStack } from "./effective-builder";
 
 /** テスト用ヘルパー: DetectedFile を簡易作成する */
 function makeFile(
@@ -281,5 +281,141 @@ describe("buildEffectiveConfig", () => {
 
       expect(result.extensions).toEqual([]);
     });
+  });
+});
+
+describe("buildInstructionStack", () => {
+  const projectDir = "/project";
+
+  it("空チェーンで空配列を返す", () => {
+    const result = buildInstructionStack([], projectDir);
+    expect(result).toEqual([]);
+  });
+
+  it("global のみのチェーンで scope='global', injectionOrder=1", () => {
+    const files: DetectedFile[] = [
+      makeFile({
+        path: "/home/.claude/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "global",
+        category: "claude-md",
+      }),
+    ];
+    const result = buildInstructionStack(files, projectDir);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].scope).toBe("global");
+    expect(result[0].injectionOrder).toBe(1);
+    expect(result[0].type).toBe("claude-md");
+    expect(result[0].ownerDir).toBe("/home/.claude");
+  });
+
+  it("global+project+subdirectory の完全チェーンが注入順で返る", () => {
+    const files: DetectedFile[] = [
+      makeFile({
+        path: "/home/.claude/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "global",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/home/.claude/rules/typescript.md",
+        name: "typescript.md",
+        scope: "global",
+        category: "rules",
+      }),
+      makeFile({
+        path: "/project/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/project/.claude/rules/dev.md",
+        name: "dev.md",
+        scope: "project",
+        category: "rules",
+      }),
+      makeFile({
+        path: "/project/src/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+    ];
+    const result = buildInstructionStack(files, projectDir);
+
+    expect(result).toHaveLength(5);
+    /* 注入順: 低優先が先頭、高優先が末尾 */
+    expect(result[0].injectionOrder).toBe(1);
+    expect(result[0].scope).toBe("global");
+    expect(result[1].injectionOrder).toBe(2);
+    expect(result[1].scope).toBe("global");
+    expect(result[2].injectionOrder).toBe(3);
+    expect(result[2].scope).toBe("project");
+    expect(result[3].injectionOrder).toBe(4);
+    expect(result[3].scope).toBe("project");
+    expect(result[4].injectionOrder).toBe(5);
+    expect(result[4].scope).toBe("subdirectory");
+  });
+
+  it("CLAUDE.local.md の scope が 'local' になる", () => {
+    const files: DetectedFile[] = [
+      makeFile({
+        path: "/project/CLAUDE.local.md",
+        name: "CLAUDE.local.md",
+        scope: "project",
+        category: "claude-md",
+        isLocalOverride: true,
+      }),
+    ];
+    const result = buildInstructionStack(files, projectDir);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].scope).toBe("local");
+  });
+
+  it("サブディレクトリの CLAUDE.md が scope='subdirectory' になる", () => {
+    const files: DetectedFile[] = [
+      makeFile({
+        path: "/project/src/components/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+    ];
+    const result = buildInstructionStack(files, projectDir);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].scope).toBe("subdirectory");
+    expect(result[0].ownerDir).toBe("/project/src/components");
+  });
+
+  it("ownerDir が project の .claude/rules パスから正しく導出される", () => {
+    const files: DetectedFile[] = [
+      makeFile({
+        path: "/project/.claude/rules/typescript.md",
+        name: "typescript.md",
+        scope: "project",
+        category: "rules",
+      }),
+    ];
+    const result = buildInstructionStack(files, projectDir);
+
+    expect(result[0].ownerDir).toBe("/project");
+  });
+
+  it("ownerDir が global の .claude/rules パスから ~/.claude を返す", () => {
+    const files: DetectedFile[] = [
+      makeFile({
+        path: "/home/.claude/rules/typescript.md",
+        name: "typescript.md",
+        scope: "global",
+        category: "rules",
+      }),
+    ];
+    const result = buildInstructionStack(files, projectDir);
+
+    expect(result[0].ownerDir).toBe("/home/.claude");
   });
 });
