@@ -1,6 +1,12 @@
 import { readDir, exists, readTextFile } from "@tauri-apps/plugin-fs";
 import { homeDir } from "@tauri-apps/api/path";
-import type { ConfigCategory, ConfigScope, DetectedFile, DirEntry } from "../types/config";
+import type {
+  ConfigCategory,
+  ConfigScope,
+  DetectedFile,
+  DirEntry,
+  ProjectTreeNode,
+} from "../types/config";
 
 /** ディレクトリが存在するかチェック */
 async function dirExists(path: string): Promise<boolean> {
@@ -168,6 +174,172 @@ export async function readFileContent(path: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** スキャン時に無視するディレクトリ名 */
+const IGNORED_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  ".nuxt",
+  ".output",
+  ".vercel",
+  ".turbo",
+  "coverage",
+  "__pycache__",
+  ".venv",
+  "venv",
+  "target",
+  ".svelte-kit",
+]);
+
+/** ディレクトリに instruction ファイル（CLAUDE.md / .claude/rules/*.md）が存在するか判定 */
+async function hasInstructionFiles(dirPath: string): Promise<boolean> {
+  /* CLAUDE.md, CLAUDE.local.md のチェック */
+  const claudeMdExists = await exists(`${dirPath}/CLAUDE.md`).catch(() => false);
+  if (claudeMdExists) return true;
+  const claudeLocalMdExists = await exists(`${dirPath}/CLAUDE.local.md`).catch(() => false);
+  if (claudeLocalMdExists) return true;
+
+  /* .claude/CLAUDE.md のチェック */
+  const dotClaudeMd = await exists(`${dirPath}/.claude/CLAUDE.md`).catch(() => false);
+  if (dotClaudeMd) return true;
+
+  /* .claude/rules/*.md のチェック */
+  try {
+    const rulesDir = `${dirPath}/.claude/rules`;
+    if (await exists(rulesDir)) {
+      const entries = await readDir(rulesDir);
+      if (entries.some((e) => e.name.endsWith(".md"))) return true;
+    }
+  } catch {
+    /* 読取り失敗は無視 */
+  }
+  return false;
+}
+
+/** プロジェクトディレクトリツリーを再帰的に構築する */
+export async function scanProjectTree(projectDir: string, maxDepth = 5): Promise<ProjectTreeNode> {
+  /** 再帰ヘルパー */
+  async function buildNode(dirPath: string, depth: number): Promise<ProjectTreeNode> {
+    const name = dirPath.split("/").pop() ?? dirPath;
+    const node: ProjectTreeNode = {
+      name,
+      path: dirPath,
+      hasInstructions: await hasInstructionFiles(dirPath),
+      children: [],
+    };
+
+    if (depth >= maxDepth) return node;
+
+    try {
+      const entries = await readDir(dirPath);
+      const childPromises: Promise<ProjectTreeNode>[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory) continue;
+        /* 無視対象ディレクトリをスキップ */
+        if (IGNORED_DIRS.has(entry.name)) continue;
+        /* .claude 以外の隠しディレクトリをスキップ */
+        if (entry.name.startsWith(".") && entry.name !== ".claude") continue;
+        childPromises.push(buildNode(`${dirPath}/${entry.name}`, depth + 1));
+      }
+      node.children = await Promise.all(childPromises);
+      /* 名前順にソート */
+      node.children.sort((a, b) => a.name.localeCompare(b.name));
+    } catch {
+      /* 読取り失敗は無視 */
+    }
+
+    return node;
+  }
+
+  return buildNode(projectDir, 0);
+}
+
+/** 指定ディレクトリの instruction ファイルを検出する */
+export async function scanDirInstructions(
+  dirPath: string,
+  scope: ConfigScope = "project",
+): Promise<DetectedFile[]> {
+  const files: DetectedFile[] = [];
+
+  /* CLAUDE.md（ディレクトリ直下） */
+  const claudeMd = await detectFile(`${dirPath}/CLAUDE.md`, scope, "claude-md");
+  if (claudeMd) files.push(claudeMd);
+
+  /* .claude/CLAUDE.md */
+  const dotClaudeMd = await detectFile(`${dirPath}/.claude/CLAUDE.md`, scope, "claude-md");
+  if (dotClaudeMd) files.push(dotClaudeMd);
+
+  /* CLAUDE.local.md */
+  const localMd = await detectFile(`${dirPath}/CLAUDE.local.md`, scope, "claude-md", true);
+  if (localMd) files.push(localMd);
+
+  /* .claude/rules/*.md */
+  const rules = await detectFilesInDir(`${dirPath}/.claude/rules`, scope, "rules", (n) =>
+    n.endsWith(".md"),
+  );
+  files.push(...rules);
+
+  return files;
+}
+
+/** targetDir に対する instruction 注入チェーンを構築する（低優先→高優先の順） */
+export async function buildInstructionChain(
+  targetDir: string,
+  projectDir: string,
+): Promise<DetectedFile[]> {
+  const chain: DetectedFile[] = [];
+  const home = await homeDir();
+  const normalizedHome = home.replace(/\/+$/, "");
+  const globalClaudeDir = `${normalizedHome}/.claude`;
+  const normalizedProject = projectDir.replace(/\/+$/, "");
+  const normalizedTarget = targetDir.replace(/\/+$/, "");
+
+  /* 1. グローバル ~/.claude/ の instruction ファイル */
+  const globalClaudeMd = await detectFile(`${globalClaudeDir}/CLAUDE.md`, "global", "claude-md");
+  if (globalClaudeMd) chain.push(globalClaudeMd);
+
+  /* 2. グローバル rules */
+  const globalRules = await detectFilesInDir(`${globalClaudeDir}/rules`, "global", "rules", (n) =>
+    n.endsWith(".md"),
+  );
+  chain.push(...globalRules);
+
+  /* 3. ~ から projectDir までの中間ディレクトリの CLAUDE.md（上方向探索） */
+  if (normalizedProject.startsWith(normalizedHome + "/")) {
+    const relativePath = normalizedProject.slice(normalizedHome.length + 1);
+    const segments = relativePath.split("/");
+    let currentPath = normalizedHome;
+
+    for (const segment of segments) {
+      currentPath = `${currentPath}/${segment}`;
+      if (currentPath === normalizedProject) break;
+      const claudeMd = await detectFile(`${currentPath}/CLAUDE.md`, "global", "claude-md");
+      if (claudeMd) chain.push(claudeMd);
+    }
+  }
+
+  /* 4. プロジェクトルートの instruction ファイル */
+  const projectInstructions = await scanDirInstructions(projectDir, "project");
+  chain.push(...projectInstructions);
+
+  /* 5. projectDir から targetDir までの中間ディレクトリ（下方向探索） */
+  if (normalizedTarget !== normalizedProject) {
+    const relativePath = normalizedTarget.slice(normalizedProject.length + 1);
+    const segments = relativePath.split("/");
+    let currentPath = normalizedProject;
+
+    for (const segment of segments) {
+      currentPath = `${currentPath}/${segment}`;
+      const dirInstructions = await scanDirInstructions(currentPath, "project");
+      chain.push(...dirInstructions);
+    }
+  }
+
+  return chain;
 }
 
 /** ディレクトリの内容を再帰的に読み込む（最大2階層） */

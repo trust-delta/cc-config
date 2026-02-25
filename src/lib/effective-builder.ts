@@ -1,5 +1,11 @@
 import type { ScanResult, DetectedFile } from "../types/config";
-import type { EffectiveConfig, InstructionEntry, ExtensionEntry } from "../types/effective";
+import type {
+  EffectiveConfig,
+  EffectiveScope,
+  InstructionEntry,
+  InstructionStackEntry,
+  ExtensionEntry,
+} from "../types/effective";
 import type { SettingsLayer } from "./settings-merger";
 import { determineScope, mergeSettings } from "./settings-merger";
 
@@ -102,16 +108,90 @@ function buildExtensions(files: DetectedFile[]): ExtensionEntry[] {
   }));
 }
 
+/** ファイルパスからスコープを判定する（instruction stack 用） */
+function determineInstructionScope(file: DetectedFile, projectDir: string): EffectiveScope {
+  /* CLAUDE.local.md は常に local */
+  if (file.isLocalOverride || file.name === "CLAUDE.local.md") return "local";
+
+  /* ~/.claude/ 配下は global */
+  if (file.scope === "global") return "global";
+
+  /* プロジェクトルート直下・.claude/ 内は project */
+  const normalizedProject = projectDir.replace(/\/+$/, "");
+  const fileDir = file.path.substring(0, file.path.lastIndexOf("/"));
+  const normalizedFileDir = fileDir.replace(/\/+$/, "");
+
+  if (
+    normalizedFileDir === normalizedProject ||
+    normalizedFileDir === `${normalizedProject}/.claude` ||
+    normalizedFileDir === `${normalizedProject}/.claude/rules`
+  ) {
+    return "project";
+  }
+
+  /* それ以外はサブディレクトリ */
+  return "subdirectory";
+}
+
+/** ファイルパスからオーナーディレクトリを取得する */
+function getOwnerDir(filePath: string, isGlobal: boolean): string {
+  const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+
+  /* グローバルスコープ: ~/.claude がルートなので剥がさない */
+  if (isGlobal) {
+    /* ~/.claude/rules/foo.md → ~/.claude */
+    if (dir.endsWith("/rules") && dir.includes("/.claude/")) {
+      return dir.replace(/\/rules$/, "");
+    }
+    /* ~/.claude/CLAUDE.md → ~/.claude */
+    return dir;
+  }
+
+  /* プロジェクトスコープ: .claude を剥がしてプロジェクトルートを返す */
+  /* .claude/rules/foo.md → 2つ上 */
+  if (dir.endsWith("/rules") && dir.includes("/.claude/")) {
+    return dir.replace(/\/.claude\/rules$/, "");
+  }
+  /* .claude/CLAUDE.md → 1つ上 */
+  if (dir.endsWith("/.claude")) {
+    return dir.replace(/\/.claude$/, "");
+  }
+  return dir;
+}
+
+/** instruction チェーンから InstructionStack を構築する（注入順＝低優先が先頭） */
+export function buildInstructionStack(
+  chainFiles: DetectedFile[],
+  projectDir: string,
+): InstructionStackEntry[] {
+  return chainFiles.map((file, index) => ({
+    file,
+    scope: determineInstructionScope(file, projectDir),
+    type: file.category === "claude-md" ? ("claude-md" as const) : ("rule" as const),
+    injectionOrder: index + 1,
+    ownerDir: getOwnerDir(file.path, file.scope === "global"),
+  }));
+}
+
 /** ScanResult から EffectiveConfig を構築する */
 export function buildEffectiveConfig(
   scanResult: ScanResult,
   settingsContents: Map<string, string>,
+  instructionChainFiles?: DetectedFile[],
+  projectDir?: string,
 ): EffectiveConfig {
   const { files } = scanResult;
 
-  return {
+  const config: EffectiveConfig = {
     instructions: buildInstructions(files),
     settings: buildSettings(files, settingsContents),
     extensions: buildExtensions(files),
   };
+
+  /* instruction chain が渡された場合、スタックを構築 */
+  if (instructionChainFiles && projectDir) {
+    config.instructionStack = buildInstructionStack(instructionChainFiles, projectDir);
+  }
+
+  return config;
 }

@@ -1,8 +1,11 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import type { ProjectTreeNode } from "../../types/config";
+import { DirectoryTree } from "./DirectoryTree";
 
 /** localStorage のキー */
 const STORAGE_KEY = "cc-config-projects";
+const SELECTED_PROJECT_KEY = "cc-config-selected-project";
 
 /** 保存されたプロジェクト一覧を取得 */
 function loadProjects(): string[] {
@@ -25,11 +28,47 @@ function saveProjects(projects: string[]): void {
 interface LeftPaneProps {
   selectedProject: string | null;
   onSelectProject: (path: string | null) => void;
+  /** プロジェクトディレクトリツリー */
+  projectTree: ProjectTreeNode | null;
+  /** 選択中のディレクトリパス */
+  selectedDir: string | null;
+  /** ディレクトリ選択時のコールバック */
+  onSelectDirectory: (path: string) => void;
 }
 
 /** プロジェクト選択サイドバー */
-export function LeftPane({ selectedProject, onSelectProject }: LeftPaneProps) {
+export function LeftPane({
+  selectedProject,
+  onSelectProject,
+  projectTree,
+  selectedDir,
+  onSelectDirectory,
+}: LeftPaneProps) {
   const [projects, setProjects] = useState<string[]>(loadProjects);
+  const restoredRef = useRef(false);
+
+  /* 起動時に最後に選択していたプロジェクトを復元 */
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const saved = localStorage.getItem(SELECTED_PROJECT_KEY);
+    if (saved && projects.includes(saved)) {
+      onSelectProject(saved);
+    }
+  }, [projects, onSelectProject]);
+
+  /** プロジェクト選択をラップして localStorage にも保存する */
+  const handleSelectProject = useCallback(
+    (path: string | null) => {
+      if (path) {
+        localStorage.setItem(SELECTED_PROJECT_KEY, path);
+      } else {
+        localStorage.removeItem(SELECTED_PROJECT_KEY);
+      }
+      onSelectProject(path);
+    },
+    [onSelectProject],
+  );
 
   /** ディレクトリ選択ダイアログを開く */
   const handleAddProject = useCallback(async () => {
@@ -41,9 +80,9 @@ export function LeftPane({ selectedProject, onSelectProject }: LeftPaneProps) {
         saveProjects(next);
         return next;
       });
-      onSelectProject(selected);
+      handleSelectProject(selected);
     }
-  }, [onSelectProject]);
+  }, [handleSelectProject]);
 
   /** プロジェクトを削除 */
   const handleRemoveProject = useCallback(
@@ -54,10 +93,10 @@ export function LeftPane({ selectedProject, onSelectProject }: LeftPaneProps) {
         return next;
       });
       if (selectedProject === path) {
-        onSelectProject(null);
+        handleSelectProject(null);
       }
     },
-    [selectedProject, onSelectProject],
+    [selectedProject, handleSelectProject],
   );
 
   /** プロジェクトパスから表示名を生成 */
@@ -73,7 +112,7 @@ export function LeftPane({ selectedProject, onSelectProject }: LeftPaneProps) {
       {/* Global（常に表示） */}
       <div className="px-2 py-1">
         <button
-          onClick={() => onSelectProject(null)}
+          onClick={() => handleSelectProject(null)}
           className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${
             selectedProject === null
               ? "bg-blue-900/50 text-blue-300"
@@ -85,11 +124,13 @@ export function LeftPane({ selectedProject, onSelectProject }: LeftPaneProps) {
       </div>
 
       {/* プロジェクト一覧 */}
-      <div className="flex-1 overflow-y-auto overscroll-contain px-2 py-1">
+      <div
+        className={`overflow-y-auto overscroll-contain px-2 py-1 ${projectTree ? "" : "flex-1"}`}
+      >
         {projects.map((path) => (
           <div key={path} className="group flex items-center gap-1 mb-0.5">
             <button
-              onClick={() => onSelectProject(path)}
+              onClick={() => handleSelectProject(path)}
               className={`flex-1 text-left px-2 py-1.5 rounded text-xs truncate transition-colors ${
                 selectedProject === path
                   ? "bg-green-900/50 text-green-300"
@@ -110,6 +151,24 @@ export function LeftPane({ selectedProject, onSelectProject }: LeftPaneProps) {
           </div>
         ))}
       </div>
+
+      {/* ディレクトリツリー（プロジェクト選択時のみ表示） */}
+      {projectTree && (
+        <div className="flex-1 overflow-hidden flex flex-col border-t border-slate-700">
+          <div className="px-3 py-2">
+            <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Directory Tree
+            </h3>
+          </div>
+          <div className="flex-1 overflow-y-auto overscroll-contain px-1">
+            <DirectoryTree
+              tree={projectTree}
+              selectedDir={selectedDir}
+              onSelectDir={onSelectDirectory}
+            />
+          </div>
+        </div>
+      )}
 
       {/* 追加ボタン */}
       <div className="px-3 py-2 border-t border-slate-700">

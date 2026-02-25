@@ -7,7 +7,18 @@ import { EffectiveView } from "../effective/EffectiveView";
 
 /** 3ペインレイアウト */
 export function AppLayout() {
-  const { result, settingsContents, loading, error, projectPath, setProjectPath } = useConfigScan();
+  const {
+    result,
+    settingsContents,
+    loading,
+    error,
+    projectPath,
+    setProjectPath,
+    projectTree,
+    selectedDir,
+    selectDirectory,
+    instructionChain,
+  } = useConfigScan();
   const [selectedFile, setSelectedFile] = useState<DetectedFile | null>(null);
 
   const handleFileSelect = useCallback((file: DetectedFile) => {
@@ -16,8 +27,14 @@ export function AppLayout() {
 
   return (
     <div className="h-screen w-screen grid grid-cols-[240px_1fr_320px] bg-slate-950 text-slate-200">
-      {/* 左ペイン: プロジェクト選択 */}
-      <LeftPane selectedProject={projectPath} onSelectProject={setProjectPath} />
+      {/* 左ペイン: プロジェクト選択 + ディレクトリツリー */}
+      <LeftPane
+        selectedProject={projectPath}
+        onSelectProject={setProjectPath}
+        projectTree={projectTree}
+        selectedDir={selectedDir}
+        onSelectDirectory={selectDirectory}
+      />
 
       {/* 中央ペイン: 有効設定ビュー */}
       <div className="relative overflow-hidden">
@@ -38,6 +55,9 @@ export function AppLayout() {
             scanResult={result}
             settingsContents={settingsContents}
             onFileSelect={handleFileSelect}
+            instructionChain={instructionChain}
+            projectDir={projectPath}
+            selectedDir={selectedDir}
           />
         )}
       </div>
