@@ -67,6 +67,30 @@ export interface ExtensionEntry {
   category: "skills" | "agents" | "templates" | "plugins";
 }
 
+/** Instruction Map のツリーノード（系統樹表示用） */
+export interface InstructionMapNode {
+  /** ディレクトリ名 */
+  name: string;
+  /** ディレクトリの絶対パス */
+  path: string;
+  /** スコープ */
+  scope: EffectiveScope;
+  /** このディレクトリに属する instruction ファイル */
+  files: InstructionMapFile[];
+  /** 子ディレクトリ */
+  children: InstructionMapNode[];
+}
+
+/** Instruction Map 内の個別ファイル */
+export interface InstructionMapFile {
+  /** 検出されたファイル */
+  file: DetectedFile;
+  /** 種別 */
+  type: "claude-md" | "rule";
+  /** 表示用の相対パス（例: ".claude/rules/ts.md"） */
+  relativePath: string;
+}
+
 /** 有効設定の全体構造 */
 export interface EffectiveConfig {
   /** Instructions セクション（CLAUDE.md + rules） */
@@ -77,4 +101,6 @@ export interface EffectiveConfig {
   extensions: ExtensionEntry[];
   /** Instruction Stack（選択ディレクトリに応じた注入順スタック） */
   instructionStack?: InstructionStackEntry[];
+  /** Instruction Map（プロジェクト全体の系統樹） */
+  instructionMap?: InstructionMapNode[];
 }

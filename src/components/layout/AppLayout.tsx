@@ -18,6 +18,8 @@ export function AppLayout() {
     selectedDir,
     selectDirectory,
     instructionChain,
+    allProjectInstructions,
+    homeDir,
   } = useConfigScan();
   const [selectedFile, setSelectedFile] = useState<DetectedFile | null>(null);
 
@@ -58,6 +60,8 @@ export function AppLayout() {
             instructionChain={instructionChain}
             projectDir={projectPath}
             selectedDir={selectedDir}
+            allProjectInstructions={allProjectInstructions}
+            homeDir={homeDir}
           />
         )}
       </div>

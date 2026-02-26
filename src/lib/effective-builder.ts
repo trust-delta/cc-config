@@ -4,6 +4,8 @@ import type {
   EffectiveScope,
   InstructionEntry,
   InstructionStackEntry,
+  InstructionMapNode,
+  InstructionMapFile,
   ExtensionEntry,
 } from "../types/effective";
 import type { SettingsLayer } from "./settings-merger";
@@ -173,12 +175,122 @@ export function buildInstructionStack(
   }));
 }
 
+/** ファイルの相対パスを生成する */
+function getRelativePath(filePath: string, ownerDir: string): string {
+  if (filePath.startsWith(ownerDir + "/")) {
+    return filePath.slice(ownerDir.length + 1);
+  }
+  return filePath.split("/").pop() ?? filePath;
+}
+
+/** Instruction Map（系統樹）を構築する */
+export function buildInstructionMap(
+  globalFiles: DetectedFile[],
+  projectFiles: DetectedFile[],
+  projectDir: string,
+  homeDir: string,
+): InstructionMapNode[] {
+  const nodes: InstructionMapNode[] = [];
+
+  /* グローバルスコープ（~/.claude/） */
+  const globalInstructions = globalFiles.filter(isInstructionFile);
+  if (globalInstructions.length > 0) {
+    const normalizedHome = homeDir.replace(/\/+$/, "");
+    const globalClaudeDir = `${normalizedHome}/.claude`;
+    const globalNode: InstructionMapNode = {
+      name: "~/.claude",
+      path: globalClaudeDir,
+      scope: "global",
+      files: globalInstructions.map((file) => ({
+        file,
+        type: file.category === "claude-md" ? "claude-md" : "rule",
+        relativePath: getRelativePath(file.path, globalClaudeDir),
+      })),
+      children: [],
+    };
+    nodes.push(globalNode);
+  }
+
+  /* プロジェクトスコープ以下のファイルをディレクトリごとにグループ化 */
+  const projectInstructions = projectFiles.filter(isInstructionFile);
+  if (projectInstructions.length === 0) return nodes;
+
+  const normalizedProject = projectDir.replace(/\/+$/, "");
+
+  /* ファイルをオーナーディレクトリでグルーピング */
+  const dirGroups = new Map<string, InstructionMapFile[]>();
+
+  for (const file of projectInstructions) {
+    const ownerDir = getOwnerDir(file.path, false);
+    if (!dirGroups.has(ownerDir)) {
+      dirGroups.set(ownerDir, []);
+    }
+    dirGroups.get(ownerDir)!.push({
+      file,
+      type: file.category === "claude-md" ? "claude-md" : "rule",
+      relativePath: getRelativePath(file.path, ownerDir),
+    });
+  }
+
+  /* ディレクトリパスでソートして木構造を構築 */
+  const sortedDirs = Array.from(dirGroups.keys()).sort();
+
+  /* ルートノード（プロジェクトルート） */
+  const projectRootName = normalizedProject.split("/").pop() ?? normalizedProject;
+
+  /** フラットなディレクトリリストから再帰的なツリーを構築する */
+  function buildTree(
+    parentPath: string,
+    parentName: string,
+    scope: EffectiveScope,
+  ): InstructionMapNode {
+    const node: InstructionMapNode = {
+      name: parentName,
+      path: parentPath,
+      scope,
+      files: dirGroups.get(parentPath) ?? [],
+      children: [],
+    };
+
+    /* parentPath の直接的な子ディレクトリを探す */
+    const childDirs = sortedDirs.filter((dir) => {
+      if (dir === parentPath) return false;
+      if (!dir.startsWith(parentPath + "/")) return false;
+      /* parentPath と dir の間に他のグループ化されたディレクトリがないか確認 */
+      const relativePart = dir.slice(parentPath.length + 1);
+      const segments = relativePart.split("/");
+      /* 中間ディレクトリがグループ化されていない場合は直接の子とみなす */
+      for (let i = 0; i < segments.length - 1; i++) {
+        const intermediatePath = parentPath + "/" + segments.slice(0, i + 1).join("/");
+        if (dirGroups.has(intermediatePath)) return false;
+      }
+      return true;
+    });
+
+    for (const childDir of childDirs) {
+      const childName = childDir.slice(parentPath.length + 1);
+      const childScope = childDir === normalizedProject ? "project" : "subdirectory";
+      node.children.push(buildTree(childDir, childName, childScope));
+    }
+
+    return node;
+  }
+
+  const projectScope: EffectiveScope = "project";
+  const projectNode = buildTree(normalizedProject, projectRootName, projectScope);
+  nodes.push(projectNode);
+
+  return nodes;
+}
+
 /** ScanResult から EffectiveConfig を構築する */
 export function buildEffectiveConfig(
   scanResult: ScanResult,
   settingsContents: Map<string, string>,
   instructionChainFiles?: DetectedFile[],
   projectDir?: string,
+  allProjectInstructions?: DetectedFile[],
+  homeDir?: string,
 ): EffectiveConfig {
   const { files } = scanResult;
 
@@ -191,6 +303,17 @@ export function buildEffectiveConfig(
   /* instruction chain が渡された場合、スタックを構築 */
   if (instructionChainFiles && projectDir) {
     config.instructionStack = buildInstructionStack(instructionChainFiles, projectDir);
+  }
+
+  /* instruction map を構築 */
+  if (projectDir && homeDir && allProjectInstructions) {
+    const globalFiles = files.filter((f) => f.scope === "global");
+    config.instructionMap = buildInstructionMap(
+      globalFiles,
+      allProjectInstructions,
+      projectDir,
+      homeDir,
+    );
   }
 
   return config;
