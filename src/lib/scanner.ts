@@ -342,6 +342,41 @@ export async function buildInstructionChain(
   return chain;
 }
 
+/** プロジェクト配下の全 instruction ファイルを再帰的に収集する */
+export async function collectAllInstructions(
+  projectDir: string,
+  maxDepth = 5,
+): Promise<DetectedFile[]> {
+  const allFiles: DetectedFile[] = [];
+
+  /** 再帰ヘルパー */
+  async function walk(dirPath: string, depth: number): Promise<void> {
+    const instructions = await scanDirInstructions(dirPath, "project");
+    allFiles.push(...instructions);
+
+    if (depth >= maxDepth) return;
+
+    try {
+      const entries = await readDir(dirPath);
+      const childPromises: Promise<void>[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory) continue;
+        if (IGNORED_DIRS.has(entry.name)) continue;
+        if (entry.name.startsWith(".") && entry.name !== ".claude") continue;
+        /* .claude 自体はスキップ（scanDirInstructions で処理済み） */
+        if (entry.name === ".claude") continue;
+        childPromises.push(walk(`${dirPath}/${entry.name}`, depth + 1));
+      }
+      await Promise.all(childPromises);
+    } catch {
+      /* 読取り失敗は無視 */
+    }
+  }
+
+  await walk(projectDir, 0);
+  return allFiles;
+}
+
 /** ディレクトリの内容を再帰的に読み込む（最大2階層） */
 export async function readDirTree(dirPath: string, depth = 0): Promise<DirEntry[]> {
   const maxDepth = 2;

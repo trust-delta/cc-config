@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { ScanResult, DetectedFile } from "../types/config";
-import { buildEffectiveConfig, buildInstructionStack } from "./effective-builder";
+import {
+  buildEffectiveConfig,
+  buildInstructionStack,
+  buildInstructionMap,
+} from "./effective-builder";
 
 /** テスト用ヘルパー: DetectedFile を簡易作成する */
 function makeFile(
@@ -417,5 +421,193 @@ describe("buildInstructionStack", () => {
     const result = buildInstructionStack(files, projectDir);
 
     expect(result[0].ownerDir).toBe("/home/.claude");
+  });
+});
+
+describe("buildInstructionMap", () => {
+  const projectDir = "/project";
+  const homeDir = "/home/user";
+
+  it("空ファイルで空配列を返す", () => {
+    const result = buildInstructionMap([], [], projectDir, homeDir);
+    expect(result).toEqual([]);
+  });
+
+  it("グローバル instruction ファイルのみで global ノードを返す", () => {
+    const globalFiles: DetectedFile[] = [
+      makeFile({
+        path: "/home/user/.claude/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "global",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/home/user/.claude/rules/general.md",
+        name: "general.md",
+        scope: "global",
+        category: "rules",
+      }),
+    ];
+    const result = buildInstructionMap(globalFiles, [], projectDir, homeDir);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("~/.claude");
+    expect(result[0].scope).toBe("global");
+    expect(result[0].files).toHaveLength(2);
+    expect(result[0].files[0].type).toBe("claude-md");
+    expect(result[0].files[1].type).toBe("rule");
+  });
+
+  it("プロジェクトルートの instruction ファイルで project ノードを返す", () => {
+    const projectFiles: DetectedFile[] = [
+      makeFile({
+        path: "/project/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/project/.claude/rules/dev.md",
+        name: "dev.md",
+        scope: "project",
+        category: "rules",
+      }),
+    ];
+    const result = buildInstructionMap([], projectFiles, projectDir, homeDir);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("project");
+    expect(result[0].scope).toBe("project");
+    expect(result[0].files).toHaveLength(2);
+  });
+
+  it("サブディレクトリの instruction ファイルがネストされたツリーとして構築される", () => {
+    const projectFiles: DetectedFile[] = [
+      makeFile({
+        path: "/project/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/project/src/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/project/packages/api/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+    ];
+    const result = buildInstructionMap([], projectFiles, projectDir, homeDir);
+
+    expect(result).toHaveLength(1);
+    const projectNode = result[0];
+    expect(projectNode.files).toHaveLength(1);
+    expect(projectNode.children).toHaveLength(2);
+
+    const srcNode = projectNode.children.find((c) => c.name === "src");
+    expect(srcNode).toBeDefined();
+    expect(srcNode!.scope).toBe("subdirectory");
+    expect(srcNode!.files).toHaveLength(1);
+
+    const apiNode = projectNode.children.find((c) => c.name === "packages/api");
+    expect(apiNode).toBeDefined();
+    expect(apiNode!.scope).toBe("subdirectory");
+    expect(apiNode!.files).toHaveLength(1);
+  });
+
+  it("global と project の両方がある場合に2つのルートノードを返す", () => {
+    const globalFiles: DetectedFile[] = [
+      makeFile({
+        path: "/home/user/.claude/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "global",
+        category: "claude-md",
+      }),
+    ];
+    const projectFiles: DetectedFile[] = [
+      makeFile({
+        path: "/project/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+    ];
+    const result = buildInstructionMap(globalFiles, projectFiles, projectDir, homeDir);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].scope).toBe("global");
+    expect(result[1].scope).toBe("project");
+  });
+
+  it("中間ディレクトリに instruction がある場合に正しく階層化される", () => {
+    const projectFiles: DetectedFile[] = [
+      makeFile({
+        path: "/project/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/project/packages/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/project/packages/api/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+    ];
+    const result = buildInstructionMap([], projectFiles, projectDir, homeDir);
+
+    expect(result).toHaveLength(1);
+    const projectNode = result[0];
+    expect(projectNode.children).toHaveLength(1);
+
+    const packagesNode = projectNode.children[0];
+    expect(packagesNode.name).toBe("packages");
+    expect(packagesNode.files).toHaveLength(1);
+    expect(packagesNode.children).toHaveLength(1);
+
+    const apiNode = packagesNode.children[0];
+    expect(apiNode.name).toBe("api");
+    expect(apiNode.files).toHaveLength(1);
+  });
+
+  it("ファイルの relativePath が正しく生成される", () => {
+    const projectFiles: DetectedFile[] = [
+      makeFile({
+        path: "/project/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/project/.claude/CLAUDE.md",
+        name: "CLAUDE.md",
+        scope: "project",
+        category: "claude-md",
+      }),
+      makeFile({
+        path: "/project/.claude/rules/typescript.md",
+        name: "typescript.md",
+        scope: "project",
+        category: "rules",
+      }),
+    ];
+    const result = buildInstructionMap([], projectFiles, projectDir, homeDir);
+
+    const projectNode = result[0];
+    const fileNames = projectNode.files.map((f) => f.relativePath);
+    expect(fileNames).toContain("CLAUDE.md");
+    expect(fileNames).toContain(".claude/CLAUDE.md");
+    expect(fileNames).toContain(".claude/rules/typescript.md");
   });
 });

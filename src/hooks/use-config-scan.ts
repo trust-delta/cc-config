@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect } from "react";
+import { homeDir as getHomeDir } from "@tauri-apps/api/path";
 import type { ScanResult, DetectedFile, ProjectTreeNode } from "../types/config";
 import {
   scanGlobalConfig,
   scanProjectConfig,
   scanProjectTree,
   buildInstructionChain,
+  collectAllInstructions,
   readFileContent,
 } from "../lib/scanner";
 import { resolveAllReferences } from "../lib/reference-resolver";
@@ -27,6 +29,10 @@ interface ConfigScanState {
   selectedDir: string | null;
   /** 選択ディレクトリに対する instruction チェーン */
   instructionChain: DetectedFile[];
+  /** プロジェクト配下の全 instruction ファイル */
+  allProjectInstructions: DetectedFile[];
+  /** ホームディレクトリパス */
+  homeDir: string | null;
 }
 
 /** settings ファイルの内容を読み込む */
@@ -53,6 +59,8 @@ export function useConfigScan() {
     projectTree: null,
     selectedDir: null,
     instructionChain: [],
+    allProjectInstructions: [],
+    homeDir: null,
   });
 
   /** スキャンを実行 */
@@ -60,6 +68,7 @@ export function useConfigScan() {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
       const globalFiles = await scanGlobalConfig();
+      const homeDirPath = await getHomeDir();
       let projectFiles: DetectedFile[] = [];
       if (projectPath) {
         projectFiles = await scanProjectConfig(projectPath);
@@ -70,8 +79,10 @@ export function useConfigScan() {
 
       /* プロジェクトツリーを構築 */
       let projectTree: ProjectTreeNode | null = null;
+      let allProjectInstructions: DetectedFile[] = [];
       if (projectPath) {
         projectTree = await scanProjectTree(projectPath);
+        allProjectInstructions = await collectAllInstructions(projectPath);
       }
 
       /* デフォルトで selectedDir をプロジェクトルートに設定 */
@@ -94,6 +105,8 @@ export function useConfigScan() {
         projectTree,
         selectedDir,
         instructionChain,
+        allProjectInstructions,
+        homeDir: homeDirPath,
       });
     } catch (e) {
       setState((prev) => ({
