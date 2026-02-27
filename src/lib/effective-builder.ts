@@ -269,8 +269,7 @@ export function buildInstructionMap(
 
     for (const childDir of childDirs) {
       const childName = childDir.slice(parentPath.length + 1);
-      const childScope = childDir === normalizedProject ? "project" : "subdirectory";
-      node.children.push(buildTree(childDir, childName, childScope));
+      node.children.push(buildTree(childDir, childName, "subdirectory"));
     }
 
     return node;

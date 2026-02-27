@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useMemo } from "react";
 import type { DetectedFile } from "../../types/config";
 import type { InstructionMapNode, InstructionMapFile } from "../../types/effective";
 import { EFFECTIVE_SCOPE_COLORS } from "../../constants/styles";
@@ -74,8 +74,10 @@ function MapNode({ node, depth, onFileSelect, defaultOpen }: MapNodeProps) {
     }
   }, [hasContent]);
 
-  const totalFiles =
-    node.files.length + node.children.reduce((sum, child) => sum + countFiles(child), 0);
+  const totalFiles = useMemo(
+    () => node.files.length + node.children.reduce((sum, child) => sum + countFiles(child), 0),
+    [node.files, node.children],
+  );
 
   return (
     <div>
